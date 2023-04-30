@@ -188,6 +188,11 @@ impl Figure {
             .len();
         len != 0
     }
+
+    fn ilegal_coords(x: f32, y: f32) -> bool {
+        x < INIT_GRID.floor() || x > END_GRID.floor() || y > END_GRID_BOTTOM.floor()
+    }
+
     fn legal_move(&self) -> bool {
         let len = self
             .blocks
@@ -195,7 +200,7 @@ impl Figure {
             .filter(|block| -> bool {
                 let x: f32 = block.x as f32;
                 let y: f32 = block.y as f32;
-                x < INIT_GRID.floor() || x > END_GRID.floor() || y > END_GRID_BOTTOM
+                Self::ilegal_coords(x, y)
             })
             .collect::<Vec<&Block>>()
             .len();
@@ -591,72 +596,72 @@ impl event::EventHandler<ggez::GameError> for GameState {
                     self.gameover = true;
                 }
             }
-            if !self.gameover {
-                if let None = self.actual_figure {
+            if self.gameover {
+                return Ok(());
+            }
+            if let None = self.actual_figure {
+                self.actual_figure = Some(self.next_figures.remove(0));
+                self.next_figures.push(Figure::new(8));
+            } else {
+                let prev = self.actual_figure.unwrap();
+                let fig = self.actual_figure.as_mut().unwrap();
+                if self.counter >= 60 && !self.pause {
+                    for block in fig.blocks.iter_mut() {
+                        block.y += 48;
+                    }
+                    if ilegal_move(&self.static_blocks, fig) {
+                        fig.restore_blocks(prev.blocks, fig.rotation);
+                    }
+                    self.counter = 0;
+                }
+                if !self.pause {
+                    self.counter += 1;
+                }
+                if fig.some_block_is_in_y(END_GRID_BOTTOM) {
+                    for block in fig.blocks.into_iter() {
+                        self.static_blocks.push(block);
+                    }
                     self.actual_figure = Some(self.next_figures.remove(0));
                     self.next_figures.push(Figure::new(8));
                 } else {
-                    let prev = self.actual_figure.unwrap();
-                    let fig = self.actual_figure.as_mut().unwrap();
-                    if self.counter >= 60 && !self.pause {
-                        for block in fig.blocks.iter_mut() {
-                            block.y += 48;
-                        }
-                        if ilegal_move(&self.static_blocks, fig) {
-                            fig.restore_blocks(prev.blocks, fig.rotation);
-                        }
-                        self.counter = 0;
-                    }
-                    if !self.pause {
-                        self.counter += 1;
-                    }
-                    if fig.some_block_is_in_y(END_GRID_BOTTOM) {
-                        for block in fig.blocks.into_iter() {
-                            self.static_blocks.push(block);
-                        }
-                        self.actual_figure = Some(self.next_figures.remove(0));
-                        self.next_figures.push(Figure::new(8));
-                    } else {
-                        let b = self.static_blocks.clone();
-                        let mut iter1 = b.iter().peekable();
-                        let mut iter2 = fig.blocks.iter().peekable();
-                        let mut not_added = false;
-                        while matches!(iter1.peek(), Some(_)) && !not_added {
-                            let block = iter1.next().unwrap();
-                            while matches!(iter2.peek(), Some(_)) && !not_added {
-                                let block_fig = iter2.next().unwrap();
-                                if block_fig.x == block.x && block.y - GRID_CELL_SIZE == block_fig.y
-                                {
-                                    for block in fig.blocks.into_iter() {
-                                        self.static_blocks.push(block);
-                                    }
-                                    not_added = true;
-                                }
-                            }
-                            iter2 = fig.blocks.iter().peekable();
-                        }
-                        if not_added {
-                            self.actual_figure = Some(self.next_figures.remove(0));
-                            self.next_figures.push(Figure::new(8));
-                        }
-                    }
                     let b = self.static_blocks.clone();
                     let mut iter1 = b.iter().peekable();
-                    while matches!(iter1.peek(), Some(_)) {
+                    let mut iter2 = fig.blocks.iter().peekable();
+                    let mut not_added = false;
+                    while matches!(iter1.peek(), Some(_)) && !not_added {
                         let block = iter1.next().unwrap();
-                        let n = self
-                            .static_blocks
-                            .iter()
-                            .filter(|bl| block.y == bl.y)
-                            .collect::<Vec<&Block>>()
-                            .len();
-                        if n == 10 {
-                            self.score += 1;
-                            self.static_blocks.retain(|bl| block.y != bl.y);
-                            for bl in self.static_blocks.iter_mut() {
-                                if bl.y < block.y {
-                                    bl.y = bl.y + GRID_CELL_SIZE;
+                        while matches!(iter2.peek(), Some(_)) && !not_added {
+                            let block_fig = iter2.next().unwrap();
+                            if block_fig.x == block.x && block.y - GRID_CELL_SIZE == block_fig.y {
+                                for block in fig.blocks.into_iter() {
+                                    self.static_blocks.push(block);
                                 }
+                                not_added = true;
+                            }
+                        }
+                        iter2 = fig.blocks.iter().peekable();
+                    }
+                    if not_added {
+                        self.actual_figure = Some(self.next_figures.remove(0));
+                        self.next_figures.push(Figure::new(8));
+                    }
+                }
+                let b = self.static_blocks.clone();
+                let mut iter1 = b.iter().peekable();
+                while matches!(iter1.peek(), Some(_)) {
+                    let block = iter1.next().unwrap();
+                    let n = self
+                        .static_blocks
+                        .iter()
+                        .filter(|bl| block.y == bl.y)
+                        .collect::<Vec<&Block>>()
+                        .len();
+                    if n == 10 {
+                        self.score += 1;
+                        self.static_blocks.retain(|bl| block.y != bl.y);
+                        for bl in self.static_blocks.iter_mut() {
+                            if bl.y < block.y {
+                                bl.y = bl.y + GRID_CELL_SIZE;
                             }
                         }
                     }
